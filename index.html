@@ -435,11 +435,29 @@
             if (totalChunks === 1) {
                 promptText = 'Process this grant document and create a formatted grant card:\n\n' + content;
             } else if (chunkNumber === 1) {
-                promptText = 'Starting new grant card creation. This document requires ' + totalChunks + ' chunks for complete processing.\n\nThis is chunk ' + chunkNumber + ' of ' + totalChunks + ':\n\n' + content + '\n\nPlease acknowledge receipt and prepare for the next chunk.';
+                promptText = 'I will provide you with a grant document in ' + totalChunks + ' chunks. Please read and remember ALL information from each chunk. Do NOT generate the grant card until I send the final chunk.\n\n' +
+                'CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '='.repeat(50) + '\n' +
+                content + '\n' +
+                '='.repeat(50) + '\n\n' +
+                'Please confirm you have received and stored chunk ' + chunkNumber + ' of ' + totalChunks + '. I will send the next chunk shortly.';
             } else if (chunkNumber === totalChunks) {
-                promptText = 'Final chunk ' + chunkNumber + ' of ' + totalChunks + ' for the grant card:\n\n' + content + '\n\nNow please generate the complete grant card using all ' + totalChunks + ' chunks of information.';
+                promptText = 'FINAL CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '='.repeat(50) + '\n' +
+                content + '\n' +
+                '='.repeat(50) + '\n\n' +
+                'Now that you have received ALL ' + totalChunks + ' chunks, please:\n\n' +
+                '1. Review ALL the information from chunks 1-' + totalChunks + '\n' +
+                '2. Generate a COMPREHENSIVE grant card that includes information from ALL chunks\n' +
+                '3. Do NOT miss any eligibility criteria, expenses, or program details from ANY chunk\n' +
+                '4. Ensure the grant card covers the COMPLETE document, not just this final chunk\n\n' +
+                'Generate the complete grant card now using ALL ' + totalChunks + ' chunks of information.';
             } else {
-                promptText = 'Continuing grant card - chunk ' + chunkNumber + ' of ' + totalChunks + ':\n\n' + content + '\n\nPlease acknowledge receipt and prepare for the next chunk.';
+                promptText = 'CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '='.repeat(50) + '\n' +
+                content + '\n' +
+                '='.repeat(50) + '\n\n' +
+                'Please confirm you have received and stored chunk ' + chunkNumber + ' of ' + totalChunks + '. Continue to remember ALL previous chunks. I will send chunk ' + (chunkNumber + 1) + ' next.';
             }
             
             const chunkHeader = document.createElement('div');
