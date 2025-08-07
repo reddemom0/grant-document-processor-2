@@ -193,7 +193,6 @@
             color: #2c5aa0;
         }
     </style>
-    <!-- PDF.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
@@ -251,9 +250,8 @@
     </div>
 
     <script>
-        const MAX_CHUNK_SIZE = 7500; // Back to 7.5K to stay under 8K limit
+        const MAX_CHUNK_SIZE = 7500;
         
-        // Configure PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
         function showStatus(message, type) {
@@ -289,7 +287,7 @@
             
             try {
                 const extractedText = await extractTextFromPDF(file);
-                showStatus('Text extracted successfully! Analyzing and chunking...', 'info');
+                showStatus('Text extracted successfully! Filtering and analyzing...', 'info');
                 await processExtractedText(extractedText);
                 showStatus('Document processed successfully!', 'success');
             } catch (error) {
@@ -314,7 +312,7 @@
             
             manualBtn.disabled = true;
             manualBtn.textContent = 'Processing...';
-            showStatus('Analyzing and chunking text...', 'info');
+            showStatus('Filtering and analyzing text...', 'info');
             
             try {
                 await processExtractedText(text);
@@ -349,6 +347,22 @@
             return fullText.trim();
         }
         
+        function filterUnnecessaryContent(text) {
+            let filtered = text;
+            
+            // Basic filtering - remove excessive whitespace
+            filtered = filtered.replace(/\n{4,}/g, '\n\n\n');
+            filtered = filtered.replace(/[ \t]{3,}/g, '  ');
+            filtered = filtered.replace(/^\s*\d+\s*$/gm, '');
+            
+            // Remove common unnecessary sections
+            filtered = filtered.replace(/Contact Information[\s\S]*?(?=\n[A-Z]|\n\n[A-Z]|$)/gi, '');
+            filtered = filtered.replace(/(?:disclaimer|legal notice)[\s\S]*?(?=\n[A-Z]|\n\n[A-Z]|$)/gi, '');
+            filtered = filtered.replace(/table of contents[\s\S]*?(?=\n[A-Z]|\n\n[A-Z]|$)/gi, '');
+            
+            return filtered.trim();
+        }
+        
         async function processExtractedText(text) {
             const charCount = text.length;
             const resultsDiv = document.getElementById('results');
@@ -360,37 +374,92 @@
             resultsDiv.style.display = 'block';
             summaryDiv.style.display = 'block';
             
-            if (charCount <= MAX_CHUNK_SIZE) {
-                summaryText.innerHTML = '<strong>Document Length:</strong> ' + charCount.toLocaleString() + ' characters<br>' +
+            // Filter unnecessary content
+            const filteredText = filterUnnecessaryContent(text);
+            const reductionPercent = Math.round((1 - filteredText.length / text.length) * 100);
+            
+            // Extract key facts and analyze document
+            const keyFacts = extractKeyFacts(filteredText);
+            const documentType = analyzeDocumentType(filteredText);
+            
+            if (filteredText.length <= MAX_CHUNK_SIZE) {
+                summaryText.innerHTML = '<strong>Original Length:</strong> ' + charCount.toLocaleString() + ' characters<br>' +
+                    '<strong>Filtered Length:</strong> ' + filteredText.length.toLocaleString() + ' characters (' + reductionPercent + '% reduction)<br>' +
                     '<strong>Processing Method:</strong> Single message (fits within CustomGPT.ai limit)<br>' +
+                    '<strong>Document Type:</strong> ' + documentType + '<br>' +
                     '<strong>Ready for:</strong> Direct copy/paste to CustomGPT.ai';
                 
-                createChunkElement(text, 1, 1, 'Complete Document');
+                createChunkElement(filteredText, 1, 1, 'Complete Document', keyFacts, documentType);
             } else {
-                const chunks = smartChunkText(text);
+                const chunks = smartChunkText(filteredText);
                 
-                summaryText.innerHTML = '<strong>Document Length:</strong> ' + charCount.toLocaleString() + ' characters<br>' +
-                    '<strong>Processing Method:</strong> Split into ' + chunks.length + ' chunks<br>' +
+                summaryText.innerHTML = '<strong>Original Length:</strong> ' + charCount.toLocaleString() + ' characters<br>' +
+                    '<strong>Filtered Length:</strong> ' + filteredText.length.toLocaleString() + ' characters (' + reductionPercent + '% reduction)<br>' +
+                    '<strong>Processing Method:</strong> Smart chunking (' + chunks.length + ' chunks)<br>' +
+                    '<strong>Document Type:</strong> ' + documentType + '<br>' +
+                    '<strong>Key Facts Identified:</strong> ' + keyFacts.length + '<br>' +
                     '<strong>Instructions:</strong> Copy and paste each chunk sequentially to CustomGPT.ai';
                 
                 chunks.forEach(function(chunk, index) {
-                    createChunkElement(chunk, index + 1, chunks.length, 'Chunk ' + (index + 1));
+                    createChunkElement(chunk, index + 1, chunks.length, 'Chunk ' + (index + 1), keyFacts, documentType);
                 });
             }
+        }
+        
+        function extractKeyFacts(text) {
+            const facts = [];
+            
+            const fundingMatch = text.match(/(?:funding|grant value|amount|up to|maximum)[:\s]*\$?([0-9,]+(?:\.[0-9]{2})?)/i);
+            if (fundingMatch) {
+                facts.push('Funding: $' + fundingMatch[1]);
+            }
+            
+            const percentMatch = text.match(/(\d+)%\s*(?:of|coverage|reimbursement|funding)/i);
+            if (percentMatch) {
+                facts.push('Coverage: ' + percentMatch[1] + '%');
+            }
+            
+            const deadlineMatch = text.match(/(?:deadline|due|timeline|turnaround)[:\s]*([0-9-]+ (?:days|weeks|months|business days))/i);
+            if (deadlineMatch) {
+                facts.push('Timeline: ' + deadlineMatch[1]);
+            }
+            
+            return facts;
+        }
+        
+        function analyzeDocumentType(text) {
+            const indicators = {
+                'Training Grant': ['training', 'skill development', 'workforce'],
+                'R&D Grant': ['research', 'development', 'innovation', 'technology'],
+                'Market Expansion Grant': ['export', 'international', 'market expansion'],
+                'Hiring Grant': ['hiring', 'employment', 'wage subsidy'],
+                'Business Loan': ['loan', 'financing', 'credit'],
+                'Investment Program': ['investment', 'equity', 'capital funding']
+            };
+            
+            const textLower = text.toLowerCase();
+            let bestMatch = 'General Grant';
+            let maxScore = 0;
+            
+            for (const type in indicators) {
+                const keywords = indicators[type];
+                const score = keywords.reduce(function(acc, keyword) {
+                    return acc + (textLower.includes(keyword) ? 1 : 0);
+                }, 0);
+                
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestMatch = type;
+                }
+            }
+            
+            return bestMatch;
         }
         
         function smartChunkText(text) {
             const chunks = [];
             let remainingText = text;
             
-            // First, try to split by major sections to keep related content together
-            const sectionSplits = splitByMajorSections(text);
-            
-            if (sectionSplits.length > 1 && sectionSplits.every(section => section.length <= MAX_CHUNK_SIZE)) {
-                return sectionSplits;
-            }
-            
-            // If section-based splitting doesn't work, use character-based chunking
             while (remainingText.length > 0) {
                 if (remainingText.length <= MAX_CHUNK_SIZE) {
                     chunks.push(remainingText.trim());
@@ -410,46 +479,6 @@
             return chunks;
         }
         
-        function splitByMajorSections(text) {
-            // Common grant document section patterns
-            const sectionPatterns = [
-                /(?:^|\n\n)\s*(?:OVERVIEW|DESCRIPTION|PURPOSE|ABOUT|INTRODUCTION)/i,
-                /(?:^|\n\n)\s*(?:ELIGIBILITY|ELIGIBLE|CRITERIA|REQUIREMENTS|WHO CAN APPLY)/i,
-                /(?:^|\n\n)\s*(?:FUNDING|GRANT VALUE|AMOUNT|FINANCIAL|BUDGET)/i,
-                /(?:^|\n\n)\s*(?:EXPENSES|COSTS|ELIGIBLE COSTS|ALLOWABLE|EXPENDITURES)/i,
-                /(?:^|\n\n)\s*(?:APPLICATION|APPLY|PROCESS|PROCEDURE|HOW TO APPLY)/i,
-                /(?:^|\n\n)\s*(?:PROGRAM DETAILS|DETAILS|TERMS|CONDITIONS|ADDITIONAL)/i
-            ];
-            
-            const sections = [];
-            let currentPos = 0;
-            
-            for (let i = 0; i < sectionPatterns.length; i++) {
-                const match = text.substring(currentPos).search(sectionPatterns[i]);
-                if (match !== -1) {
-                    const actualPos = currentPos + match;
-                    if (currentPos < actualPos) {
-                        const section = text.substring(currentPos, actualPos).trim();
-                        if (section && section.length > 100) {
-                            sections.push(section);
-                        }
-                    }
-                    currentPos = actualPos;
-                }
-            }
-            
-            // Add the remaining text
-            if (currentPos < text.length) {
-                const lastSection = text.substring(currentPos).trim();
-                if (lastSection && lastSection.length > 100) {
-                    sections.push(lastSection);
-                }
-            }
-            
-            // If no sections found, return empty array to fall back to character-based chunking
-            return sections.length > 1 ? sections : [];
-        }
-        
         function findBestSplitPoint(text, maxLength) {
             if (text.length <= maxLength) {
                 return text.length;
@@ -458,10 +487,10 @@
             const searchStart = Math.max(0, maxLength - 300);
             
             const breakPoints = [
-                text.lastIndexOf('\n\n', maxLength),    // Paragraph break
-                text.lastIndexOf('. ', maxLength),       // Sentence end
-                text.lastIndexOf('\n', maxLength),       // Line break
-                text.lastIndexOf(' ', maxLength)         // Word boundary
+                text.lastIndexOf('\n\n', maxLength),
+                text.lastIndexOf('. ', maxLength),
+                text.lastIndexOf('\n', maxLength),
+                text.lastIndexOf(' ', maxLength)
             ];
             
             for (let i = 0; i < breakPoints.length; i++) {
@@ -473,44 +502,53 @@
             return maxLength;
         }
         
-        function createChunkElement(content, chunkNumber, totalChunks, title) {
+        function createChunkElement(content, chunkNumber, totalChunks, title, keyFacts, documentType) {
             const chunksDiv = document.getElementById('chunks');
             
             const chunkDiv = document.createElement('div');
             chunkDiv.className = 'chunk';
             
+            const keyFactsText = keyFacts && keyFacts.length > 0 ? 
+                '\n🔑 KEY FACTS: ' + keyFacts.join(' | ') + '\n' : '';
+            
             let promptText;
             if (totalChunks === 1) {
-                promptText = 'Process this grant document and create formatted grant criteria:\n\n' + content;
+                promptText = 'Process this ' + (documentType || 'grant').toLowerCase() + ' document and create formatted grant criteria:' + keyFactsText + '\n\n' + content;
             } else if (chunkNumber === 1) {
-                promptText = 'I will provide a grant document in ' + totalChunks + ' parts. Your task:\n\n' +
-                '1. READ and REMEMBER each part carefully\n' +
-                '2. Do NOT generate grant criteria until I say "GENERATE GRANT CRITERIA"\n' +
-                '3. When I ask for grant criteria, use ALL information from all ' + totalChunks + ' parts\n\n' +
+                promptText = '📋 GRANT CRITERIA CREATION - ' + (documentType || 'GRANT').toUpperCase() + '\n\n' +
+                'I will provide this grant document in ' + totalChunks + ' parts. Your critical task:\n\n' +
+                '🧠 MEMORY INSTRUCTIONS:\n' +
+                '1. READ and STORE each part in your memory\n' +
+                '2. NEVER generate grant criteria until I say "🎯 GENERATE GRANT CRITERIA"\n' +
+                '3. MAINTAIN full context from ALL parts when generating final criteria\n\n' +
+                keyFactsText +
                 '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
                 '═'.repeat(60) + '\n' +
                 content + '\n' +
                 '═'.repeat(60) + '\n\n' +
-                '✅ Confirm you have stored Part ' + chunkNumber + ' and are ready for Part ' + (chunkNumber + 1) + '.';
+                '✅ REQUIRED: Confirm you stored Part ' + chunkNumber + ' and are ready for Part ' + (chunkNumber + 1) + '.';
             } else if (chunkNumber === totalChunks) {
                 promptText = '📋 FINAL PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
                 '═'.repeat(60) + '\n' +
                 content + '\n' +
                 '═'.repeat(60) + '\n\n' +
                 '🎯 GENERATE GRANT CRITERIA\n\n' +
-                'Now create COMPLETE grant criteria using information from ALL ' + totalChunks + ' parts. Include:\n\n' +
-                '• ALL eligibility criteria from every part\n' +
-                '• ALL expenses (eligible AND ineligible) from every part\n' +
-                '• ALL program details and requirements from every part\n' +
-                '• Complete overview, funding amounts, and application process\n\n' +
-                'Double-check that you are using information from Parts 1-' + totalChunks + ', not just Part ' + totalChunks + '.';
+                'MEMORY CHECK - You now have ALL ' + totalChunks + ' parts. Key facts to remember:\n' +
+                keyFactsText + '\n' +
+                'CREATE COMPREHENSIVE GRANT CRITERIA including:\n' +
+                '✓ ALL eligibility requirements from Parts 1-' + totalChunks + '\n' +
+                '✓ ALL expenses (eligible AND ineligible) from Parts 1-' + totalChunks + '\n' +
+                '✓ ALL program details from Parts 1-' + totalChunks + '\n\n' +
+                '⚠️ CRITICAL: Use information from ALL parts, not just Part ' + totalChunks + '.';
             } else {
                 promptText = '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
                 '═'.repeat(60) + '\n' +
                 content + '\n' +
                 '═'.repeat(60) + '\n\n' +
-                '✅ Confirm you have stored Part ' + chunkNumber + ' and are ready for Part ' + (chunkNumber + 1) + '. ' +
-                'Remember: you now have Parts 1-' + chunkNumber + ' stored. Do NOT generate grant criteria yet.';
+                'MEMORY STATUS: You have Parts 1-' + chunkNumber + ' of ' + totalChunks + '\n' +
+                keyFactsText +
+                '✅ REQUIRED: Confirm you stored Part ' + chunkNumber + '. Ready for Part ' + (chunkNumber + 1) + '.\n\n' +
+                '🚫 Do NOT generate grant criteria yet. Wait for all ' + totalChunks + ' parts.';
             }
             
             const chunkHeader = document.createElement('div');
@@ -552,13 +590,6 @@
                 }, 2000);
             } catch (error) {
                 console.error('Failed to copy text:', error);
-                const textArea = document.createElement('textarea');
-                textArea.value = text;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                
                 button.textContent = 'Copied!';
                 setTimeout(function() {
                     button.textContent = 'Copy for CustomGPT.ai';
