@@ -319,13 +319,58 @@
             for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
                 const page = await pdf.getPage(pageNum);
                 const textContent = await page.getTextContent();
-                const pageText = textContent.items.map(item => item.str).join(' ');
-                fullText += pageText + '\n\n';
+                
+                // Better formatting preservation
+                const pageItems = textContent.items;
+                let pageText = '';
+                let lastY = null;
+                let lineText = '';
+                
+                for (let i = 0; i < pageItems.length; i++) {
+                    const item = pageItems[i];
+                    const currentY = Math.round(item.transform[5]);
+                    
+                    // If we're on a new line (different Y coordinate)
+                    if (lastY !== null && Math.abs(currentY - lastY) > 2) {
+                        if (lineText.trim()) {
+                            pageText += lineText.trim() + '\n';
+                        }
+                        lineText = '';
+                    }
+                    
+                    // Add space if this item is far from the previous one horizontally
+                    if (lineText && item.transform[4] > 0) {
+                        const prevItem = pageItems[i - 1];
+                        if (prevItem && (item.transform[4] - (prevItem.transform[4] + prevItem.width)) > 10) {
+                            lineText += ' ';
+                        }
+                    }
+                    
+                    lineText += item.str;
+                    lastY = currentY;
+                }
+                
+                // Add the last line
+                if (lineText.trim()) {
+                    pageText += lineText.trim() + '\n';
+                }
+                
+                fullText += pageText + '\n';
             }
             
             if (!fullText.trim()) {
                 throw new Error('No text could be extracted from the PDF');
             }
+            
+            // Preserve bullet points and list formatting
+            fullText = fullText
+                .replace(/•/g, '• ') // Ensure space after bullets
+                .replace(/^\s*\d+\.\s*/gm, function(match) { // Preserve numbered lists
+                    return match;
+                })
+                .replace(/^\s*[a-z]\)\s*/gm, function(match) { // Preserve lettered lists
+                    return match;
+                });
             
             return fullText.trim();
         }
@@ -333,63 +378,41 @@
         function filterUnnecessaryContent(text) {
             let filtered = text;
             
-            // Stage 1: Remove table of contents and navigation
-            filtered = filtered.replace(/contents[\s\S]*?(?=program overview|eligible|overview|description)/gi, '');
-            filtered = filtered.replace(/table\s+of\s+contents[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
+            // Stage 1: Remove only the most obvious waste - table of contents with dots
+            filtered = filtered.replace(/contents[\s\S]*?\.{3,}[\s\S]*?(?=program overview|eligible|overview|description)/gi, '');
             
-            // Stage 2: Remove page references and dots
-            filtered = filtered.replace(/\.{3,}/g, '');
-            filtered = filtered.replace(/\s+\d+\s*$/gm, ''); // Remove trailing page numbers
-            filtered = filtered.replace(/^\s*\d+\s*$/gm, ''); // Remove standalone page numbers
+            // Stage 2: Remove page references and dot leaders only
+            filtered = filtered.replace(/\.{4,}/g, ''); // Remove long dot patterns
+            filtered = filtered.replace(/\s+\d+\s*$/gm, ''); // Remove trailing page numbers only
             
-            // Stage 3: Remove dates and version info  
+            // Stage 3: Remove only administrative headers (keep content)
             filtered = filtered.replace(/effective\s+\w+\s+\d+\s*,?\s*\d{4}/gi, '');
             filtered = filtered.replace(/\d{4}\/\d{2,4}/g, '');
-            filtered = filtered.replace(/202\d\/\d+/g, '');
             
-            // Stage 4: Remove website links and references
-            filtered = filtered.replace(/https?:\/\/[^\s]+/g, '');
-            filtered = filtered.replace(/www\.[^\s]+/g, '');
-            filtered = filtered.replace(/visit\s+our\s+website[^\n]*/gi, '');
-            filtered = filtered.replace(/for\s+a\s+complete\s+list[\s\S]*?visit:[\s\S]*?(?=\n)/gi, '');
+            // Stage 4: Remove website URLs only (keep references to appendices and content)
+            filtered = filtered.replace(/https?:\/\/[^\s]+/g, '[WEBSITE]');
+            filtered = filtered.replace(/www\.[^\s]+/g, '[WEBSITE]');
             
-            // Stage 5: Remove administrative sections
-            filtered = filtered.replace(/contact\s+information[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|\n\s*•|$)/gi, '');
-            filtered = filtered.replace(/(?:disclaimer|legal notice|privacy policy)[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
-            filtered = filtered.replace(/acknowledgment?s?[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
-            filtered = filtered.replace(/for\s+more\s+information[\s\S]*?contact[\s\S]*?(?=\n\s*[A-Z]|\n\s*\d+\.|$)/gi, '');
+            // Stage 5: Clean up excessive whitespace but preserve structure
+            filtered = filtered.replace(/\n{4,}/g, '\n\n\n'); // Allow up to 3 line breaks
+            filtered = filtered.replace(/[ \t]{4,}/g, '  '); // Keep some spacing for tables
             
-            // Stage 6: Remove footnote references and superscript numbers
-            filtered = filtered.replace(/\s+\d+\s+for\s+a\s+complete\s+list/gi, '');
-            filtered = filtered.replace(/\s+1\s+/g, ' ');
-            filtered = filtered.replace(/\b\d+\s+(?=For|See)/g, '');
+            // Stage 6: Preserve bullet points and list formatting
+            // Don't remove bullets, numbers, or indentation that could be lists
             
-            // Stage 7: Remove reference to appendices and external docs
-            filtered = filtered.replace(/see\s+appendix\s+[A-Z]\s+for\s+more\s+details[\.\s]*/gi, '');
-            filtered = filtered.replace(/please\s+visit\s+our\s+website[\s\S]*?(?=\n)/gi, '');
-            
-            // Stage 8: Clean up excessive whitespace and formatting artifacts
-            filtered = filtered.replace(/\n{4,}/g, '\n\n');
-            filtered = filtered.replace(/[ \t]{3,}/g, ' ');
-            filtered = filtered.replace(/^\s+$/gm, '');
-            
-            // Stage 9: Remove lines that are just administrative references
+            // Stage 7: Only remove lines that are clearly just administrative waste
             filtered = filtered.split('\n').filter(line => {
                 const lineTrimmed = line.trim().toLowerCase();
                 return !(
-                    lineTrimmed.length === 0 ||
-                    /^\.{3,}/.test(line) || // Lines starting with dots
-                    /^\d+$/.test(lineTrimmed) || // Just page numbers
+                    /^\.{3,}/.test(line) || // Lines starting with dots only
+                    /^\d+$/.test(lineTrimmed) || // Just standalone page numbers
                     /^page\s+\d+/.test(lineTrimmed) || // Page references
-                    /gov\.bc\.ca/.test(lineTrimmed) || // Government URLs
-                    /^\d{4}\/\d+$/.test(lineTrimmed) || // Date patterns
-                    /^effective/.test(lineTrimmed) || // Effective dates
-                    /ministries.*organizations$/.test(lineTrimmed) // Incomplete URL references
+                    /^\d{4}\/\d+$/.test(lineTrimmed) // Date patterns only
                 );
             }).join('\n');
             
-            // Stage 10: Final cleanup - remove multiple consecutive blank lines
-            filtered = filtered.replace(/\n\s*\n\s*\n/g, '\n\n');
+            // Stage 8: Final cleanup - minimal
+            filtered = filtered.replace(/\n\s*\n\s*\n\s*\n/g, '\n\n\n'); // Max 3 line breaks
             
             return filtered.trim();
         }
