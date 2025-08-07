@@ -269,7 +269,8 @@
             const formData = new FormData();
             formData.append('file', file);
             
-            const response = await fetch('https://api.pdf.co/v1/pdf/convert/to/text', {
+            // Use CORS proxy to avoid browser restrictions
+            const response = await fetch('https://cors-anywhere.herokuapp.com/https://api.pdf.co/v1/pdf/convert/to/text', {
                 method: 'POST',
                 headers: {
                     'x-api-key': PDF_API_KEY
