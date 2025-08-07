@@ -61,6 +61,18 @@
             margin: 10px 0;
         }
         
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+            margin: 10px 0;
+        }
+        
         button {
             background: #4A90C2;
             color: white;
@@ -167,7 +179,22 @@
             margin-top: 0;
             color: #856404;
         }
+        
+        .manual-input {
+            background: #e8f4fd;
+            border: 1px solid #4A90C2;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .manual-input h3 {
+            margin-top: 0;
+            color: #2c5aa0;
+        }
     </style>
+    <!-- PDF.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -201,7 +228,14 @@
             <p>Select a PDF file to extract and process text for CustomGPT.ai</p>
             <input type="file" id="fileInput" accept=".pdf" />
             <br>
-            <button onclick="processDocument()" id="processBtn">Process Document</button>
+            <button onclick="processDocument()" id="processBtn">Process PDF</button>
+        </div>
+        
+        <div class="manual-input">
+            <h3>Or Paste Text Directly</h3>
+            <p>If you already have the text from your grant document, paste it below:</p>
+            <textarea id="manualText" placeholder="Paste your grant document text here..."></textarea>
+            <button onclick="processManualText()" id="manualBtn">Process Text</button>
         </div>
         
         <div id="status" class="status"></div>
@@ -217,8 +251,10 @@
     </div>
 
     <script>
-        const PDF_API_KEY = 'writers@granted.ca_DlmgQCx0A0AH2aXmnPsjlp7o3FXERSoD4aw7Ax4BINCQaJ6rTevInrw7A1VEYxcw';
         const MAX_CHUNK_SIZE = 7500;
+        
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
         function showStatus(message, type) {
             const statusDiv = document.getElementById('status');
@@ -249,7 +285,7 @@
             
             processBtn.disabled = true;
             processBtn.textContent = 'Processing...';
-            showStatus('Uploading and extracting text from PDF...', 'info');
+            showStatus('Extracting text from PDF...', 'info');
             
             try {
                 const extractedText = await extractTextFromPDF(file);
@@ -261,50 +297,56 @@
                 showStatus('Error: ' + error.message, 'error');
             } finally {
                 processBtn.disabled = false;
-                processBtn.textContent = 'Process Document';
+                processBtn.textContent = 'Process PDF';
+            }
+        }
+        
+        async function processManualText() {
+            const textArea = document.getElementById('manualText');
+            const manualBtn = document.getElementById('manualBtn');
+            
+            const text = textArea.value.trim();
+            
+            if (!text) {
+                showStatus('Please paste some text first', 'error');
+                return;
+            }
+            
+            manualBtn.disabled = true;
+            manualBtn.textContent = 'Processing...';
+            showStatus('Analyzing and chunking text...', 'info');
+            
+            try {
+                await processExtractedText(text);
+                showStatus('Text processed successfully!', 'success');
+            } catch (error) {
+                console.error('Error processing text:', error);
+                showStatus('Error: ' + error.message, 'error');
+            } finally {
+                manualBtn.disabled = false;
+                manualBtn.textContent = 'Process Text';
             }
         }
         
         async function extractTextFromPDF(file) {
-            // Convert file to base64
-            const base64Data = await fileToBase64(file);
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
             
-            // Call our Vercel API endpoint instead of PDF.co directly
-            const response = await fetch('/api/extract-pdf', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fileData: base64Data,
-                    fileName: file.name
-                })
-            });
+            let fullText = '';
             
-            if (!response.ok) {
-                throw new Error('API error: ' + response.statusText);
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const textContent = await page.getTextContent();
+                
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + '\n\n';
             }
             
-            const result = await response.json();
-            
-            if (!result.success) {
-                throw new Error(result.error || 'Unknown error');
+            if (!fullText || fullText.trim().length === 0) {
+                throw new Error('No text could be extracted from the PDF. The PDF might be image-based or protected.');
             }
             
-            return result.text;
-        }
-        
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => {
-                    // Remove the data:application/pdf;base64, prefix
-                    const base64 = reader.result.split(',')[1];
-                    resolve(base64);
-                };
-                reader.onerror = error => reject(error);
-            });
+            return fullText.trim();
         }
         
         async function processExtractedText(text) {
@@ -365,13 +407,13 @@
                 return text.length;
             }
             
-            const searchStart = Math.max(0, maxLength - 200);
+            const searchStart = Math.max(0, maxLength - 300);
             
             const breakPoints = [
-                text.lastIndexOf('\n\n', maxLength),
-                text.lastIndexOf('. ', maxLength),
-                text.lastIndexOf('\n', maxLength),
-                text.lastIndexOf(' ', maxLength)
+                text.lastIndexOf('\n\n', maxLength),    // Paragraph break
+                text.lastIndexOf('. ', maxLength),       // Sentence end
+                text.lastIndexOf('\n', maxLength),       // Line break
+                text.lastIndexOf(' ', maxLength)         // Word boundary
             ];
             
             for (let i = 0; i < breakPoints.length; i++) {
