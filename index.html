@@ -541,7 +541,7 @@
             let promptText;
             if (totalChunks === 1) {
                 promptText = 'Analyze this ' + (documentType || 'grant').toLowerCase() + 
-                ' document and create a Grant Card following the GRANT-CRITERIA-Formatter instructions:' + 
+                ' document and create grant criteria following the GRANT-CRITERIA-Formatter instructions:' + 
                 keyFactsText + '\n\n' + content;
             } else if (chunkNumber === 1) {
                 promptText = '📋 MULTI-PART GRANT DOCUMENT - ' + (documentType || 'GRANT').toUpperCase() + '\n\n' +
@@ -549,7 +549,7 @@
                 '🧠 INSTRUCTIONS:\n' +
                 '1. ACKNOWLEDGE each part received\n' +
                 '2. SUMMARIZE key information from each part\n' +
-                '3. DO NOT create Grant Card until you have ALL parts\n' +
+                '3. DO NOT create grant criteria until you have ALL parts\n' +
                 '4. Search ENTIRE document across all parts for each field\n\n' +
                 keyFactsText +
                 '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
@@ -562,10 +562,10 @@
                 '═'.repeat(50) + '\n' +
                 content + '\n' +
                 '═'.repeat(50) + '\n\n' +
-                '🎯 CREATE GRANT CARD\n\n' +
+                '🎯 CREATE GRANT CRITERIA\n\n' +
                 'You now have ALL ' + totalChunks + ' parts. Key facts:\n' +
                 keyFactsText + '\n' +
-                'Create comprehensive Grant Card using information from ALL parts (1-' + totalChunks + ').\n' +
+                'Create comprehensive grant criteria using information from ALL parts (1-' + totalChunks + ').\n' +
                 'Follow exact field structure for ' + (documentType || 'the identified grant type') + '.';
             } else {
                 promptText = '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
@@ -575,7 +575,7 @@
                 'STATUS: Parts 1-' + chunkNumber + ' of ' + totalChunks + '\n' +
                 keyFactsText +
                 '✅ RESPONSE: "Part ' + chunkNumber + ' received. Summary: [brief]. Ready for Part ' + (chunkNumber + 1) + '."\n\n' +
-                '🚫 Do NOT create Grant Card yet.';
+                '🚫 Do NOT create grant criteria yet.';
             }
             
             const chunkHeader = document.createElement('div');
