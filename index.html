@@ -333,20 +333,63 @@
         function filterUnnecessaryContent(text) {
             let filtered = text;
             
-            // Remove excessive whitespace
-            filtered = filtered.replace(/\n{4,}/g, '\n\n');
-            filtered = filtered.replace(/[ \t]{3,}/g, ' ');
-            filtered = filtered.replace(/^\s*\d+\s*$/gm, '');
+            // Stage 1: Remove table of contents and navigation
+            filtered = filtered.replace(/contents[\s\S]*?(?=program overview|eligible|overview|description)/gi, '');
+            filtered = filtered.replace(/table\s+of\s+contents[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
             
-            // Remove common unnecessary sections
+            // Stage 2: Remove page references and dots
+            filtered = filtered.replace(/\.{3,}/g, '');
+            filtered = filtered.replace(/\s+\d+\s*$/gm, ''); // Remove trailing page numbers
+            filtered = filtered.replace(/^\s*\d+\s*$/gm, ''); // Remove standalone page numbers
+            
+            // Stage 3: Remove dates and version info  
+            filtered = filtered.replace(/effective\s+\w+\s+\d+\s*,?\s*\d{4}/gi, '');
+            filtered = filtered.replace(/\d{4}\/\d{2,4}/g, '');
+            filtered = filtered.replace(/202\d\/\d+/g, '');
+            
+            // Stage 4: Remove website links and references
+            filtered = filtered.replace(/https?:\/\/[^\s]+/g, '');
+            filtered = filtered.replace(/www\.[^\s]+/g, '');
+            filtered = filtered.replace(/visit\s+our\s+website[^\n]*/gi, '');
+            filtered = filtered.replace(/for\s+a\s+complete\s+list[\s\S]*?visit:[\s\S]*?(?=\n)/gi, '');
+            
+            // Stage 5: Remove administrative sections
             filtered = filtered.replace(/contact\s+information[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|\n\s*•|$)/gi, '');
             filtered = filtered.replace(/(?:disclaimer|legal notice|privacy policy)[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
-            filtered = filtered.replace(/table\s+of\s+contents[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
             filtered = filtered.replace(/acknowledgment?s?[\s\S]*?(?=\n\s*[A-Z][A-Z\s]{5,}|\n\s*\d+\.|$)/gi, '');
+            filtered = filtered.replace(/for\s+more\s+information[\s\S]*?contact[\s\S]*?(?=\n\s*[A-Z]|\n\s*\d+\.|$)/gi, '');
             
-            // Remove administrative content
-            filtered = filtered.replace(/^.*(?:page|revised|updated|effective).*\d{4}.*$/gmi, '');
-            filtered = filtered.replace(/^.*version.*\d+\.\d+.*$/gmi, '');
+            // Stage 6: Remove footnote references and superscript numbers
+            filtered = filtered.replace(/\s+\d+\s+for\s+a\s+complete\s+list/gi, '');
+            filtered = filtered.replace(/\s+1\s+/g, ' ');
+            filtered = filtered.replace(/\b\d+\s+(?=For|See)/g, '');
+            
+            // Stage 7: Remove reference to appendices and external docs
+            filtered = filtered.replace(/see\s+appendix\s+[A-Z]\s+for\s+more\s+details[\.\s]*/gi, '');
+            filtered = filtered.replace(/please\s+visit\s+our\s+website[\s\S]*?(?=\n)/gi, '');
+            
+            // Stage 8: Clean up excessive whitespace and formatting artifacts
+            filtered = filtered.replace(/\n{4,}/g, '\n\n');
+            filtered = filtered.replace(/[ \t]{3,}/g, ' ');
+            filtered = filtered.replace(/^\s+$/gm, '');
+            
+            // Stage 9: Remove lines that are just administrative references
+            filtered = filtered.split('\n').filter(line => {
+                const lineTrimmed = line.trim().toLowerCase();
+                return !(
+                    lineTrimmed.length === 0 ||
+                    /^\.{3,}/.test(line) || // Lines starting with dots
+                    /^\d+$/.test(lineTrimmed) || // Just page numbers
+                    /^page\s+\d+/.test(lineTrimmed) || // Page references
+                    /gov\.bc\.ca/.test(lineTrimmed) || // Government URLs
+                    /^\d{4}\/\d+$/.test(lineTrimmed) || // Date patterns
+                    /^effective/.test(lineTrimmed) || // Effective dates
+                    /ministries.*organizations$/.test(lineTrimmed) // Incomplete URL references
+                );
+            }).join('\n');
+            
+            // Stage 10: Final cleanup - remove multiple consecutive blank lines
+            filtered = filtered.replace(/\n\s*\n\s*\n/g, '\n\n');
             
             return filtered.trim();
         }
