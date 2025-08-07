@@ -220,7 +220,7 @@
             </svg>
             
             <h1>Grant Document Processor</h1>
-            <p class="subtitle">Extract and prepare grant documents for CustomGPT.ai analysis</p>
+            <p class="subtitle">Extract and prepare grant documents for CustomGPT.ai grant criteria analysis</p>
         </div>
         
         <div class="upload-area">
@@ -251,7 +251,7 @@
     </div>
 
     <script>
-        const MAX_CHUNK_SIZE = 15000; // Increased to reduce number of chunks
+        const MAX_CHUNK_SIZE = 7500; // Back to 7.5K to stay under 8K limit
         
         // Configure PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -481,31 +481,36 @@
             
             let promptText;
             if (totalChunks === 1) {
-                promptText = 'Process this grant document and create a formatted grant card:\n\n' + content;
+                promptText = 'Process this grant document and create formatted grant criteria:\n\n' + content;
             } else if (chunkNumber === 1) {
-                promptText = 'I will provide you with a grant document in ' + totalChunks + ' chunks. Please read and remember ALL information from each chunk. Do NOT generate the grant card until I send the final chunk.\n\n' +
-                'CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
-                '='.repeat(50) + '\n' +
+                promptText = 'I will provide a grant document in ' + totalChunks + ' parts. Your task:\n\n' +
+                '1. READ and REMEMBER each part carefully\n' +
+                '2. Do NOT generate grant criteria until I say "GENERATE GRANT CRITERIA"\n' +
+                '3. When I ask for grant criteria, use ALL information from all ' + totalChunks + ' parts\n\n' +
+                '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '═'.repeat(60) + '\n' +
                 content + '\n' +
-                '='.repeat(50) + '\n\n' +
-                'Please confirm you have received and stored chunk ' + chunkNumber + ' of ' + totalChunks + '. I will send the next chunk shortly.';
+                '═'.repeat(60) + '\n\n' +
+                '✅ Confirm you have stored Part ' + chunkNumber + ' and are ready for Part ' + (chunkNumber + 1) + '.';
             } else if (chunkNumber === totalChunks) {
-                promptText = 'FINAL CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
-                '='.repeat(50) + '\n' +
+                promptText = '📋 FINAL PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '═'.repeat(60) + '\n' +
                 content + '\n' +
-                '='.repeat(50) + '\n\n' +
-                'Now that you have received ALL ' + totalChunks + ' chunks, please:\n\n' +
-                '1. Review ALL the information from chunks 1-' + totalChunks + '\n' +
-                '2. Generate a COMPREHENSIVE grant card that includes information from ALL chunks\n' +
-                '3. Do NOT miss any eligibility criteria, expenses, or program details from ANY chunk\n' +
-                '4. Ensure the grant card covers the COMPLETE document, not just this final chunk\n\n' +
-                'Generate the complete grant card now using ALL ' + totalChunks + ' chunks of information.';
+                '═'.repeat(60) + '\n\n' +
+                '🎯 GENERATE GRANT CRITERIA\n\n' +
+                'Now create COMPLETE grant criteria using information from ALL ' + totalChunks + ' parts. Include:\n\n' +
+                '• ALL eligibility criteria from every part\n' +
+                '• ALL expenses (eligible AND ineligible) from every part\n' +
+                '• ALL program details and requirements from every part\n' +
+                '• Complete overview, funding amounts, and application process\n\n' +
+                'Double-check that you are using information from Parts 1-' + totalChunks + ', not just Part ' + totalChunks + '.';
             } else {
-                promptText = 'CHUNK ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
-                '='.repeat(50) + '\n' +
+                promptText = '📋 PART ' + chunkNumber + ' OF ' + totalChunks + ':\n' +
+                '═'.repeat(60) + '\n' +
                 content + '\n' +
-                '='.repeat(50) + '\n\n' +
-                'Please confirm you have received and stored chunk ' + chunkNumber + ' of ' + totalChunks + '. Continue to remember ALL previous chunks. I will send chunk ' + (chunkNumber + 1) + ' next.';
+                '═'.repeat(60) + '\n\n' +
+                '✅ Confirm you have stored Part ' + chunkNumber + ' and are ready for Part ' + (chunkNumber + 1) + '. ' +
+                'Remember: you now have Parts 1-' + chunkNumber + ' stored. Do NOT generate grant criteria yet.';
             }
             
             const chunkHeader = document.createElement('div');
