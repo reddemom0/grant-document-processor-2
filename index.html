@@ -251,7 +251,7 @@
     </div>
 
     <script>
-        const MAX_CHUNK_SIZE = 7500;
+        const MAX_CHUNK_SIZE = 15000; // Increased to reduce number of chunks
         
         // Configure PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -383,6 +383,14 @@
             const chunks = [];
             let remainingText = text;
             
+            // First, try to split by major sections to keep related content together
+            const sectionSplits = splitByMajorSections(text);
+            
+            if (sectionSplits.length > 1 && sectionSplits.every(section => section.length <= MAX_CHUNK_SIZE)) {
+                return sectionSplits;
+            }
+            
+            // If section-based splitting doesn't work, use character-based chunking
             while (remainingText.length > 0) {
                 if (remainingText.length <= MAX_CHUNK_SIZE) {
                     chunks.push(remainingText.trim());
@@ -400,6 +408,46 @@
             }
             
             return chunks;
+        }
+        
+        function splitByMajorSections(text) {
+            // Common grant document section patterns
+            const sectionPatterns = [
+                /(?:^|\n\n)\s*(?:OVERVIEW|DESCRIPTION|PURPOSE|ABOUT|INTRODUCTION)/i,
+                /(?:^|\n\n)\s*(?:ELIGIBILITY|ELIGIBLE|CRITERIA|REQUIREMENTS|WHO CAN APPLY)/i,
+                /(?:^|\n\n)\s*(?:FUNDING|GRANT VALUE|AMOUNT|FINANCIAL|BUDGET)/i,
+                /(?:^|\n\n)\s*(?:EXPENSES|COSTS|ELIGIBLE COSTS|ALLOWABLE|EXPENDITURES)/i,
+                /(?:^|\n\n)\s*(?:APPLICATION|APPLY|PROCESS|PROCEDURE|HOW TO APPLY)/i,
+                /(?:^|\n\n)\s*(?:PROGRAM DETAILS|DETAILS|TERMS|CONDITIONS|ADDITIONAL)/i
+            ];
+            
+            const sections = [];
+            let currentPos = 0;
+            
+            for (let i = 0; i < sectionPatterns.length; i++) {
+                const match = text.substring(currentPos).search(sectionPatterns[i]);
+                if (match !== -1) {
+                    const actualPos = currentPos + match;
+                    if (currentPos < actualPos) {
+                        const section = text.substring(currentPos, actualPos).trim();
+                        if (section && section.length > 100) {
+                            sections.push(section);
+                        }
+                    }
+                    currentPos = actualPos;
+                }
+            }
+            
+            // Add the remaining text
+            if (currentPos < text.length) {
+                const lastSection = text.substring(currentPos).trim();
+                if (lastSection && lastSection.length > 100) {
+                    sections.push(lastSection);
+                }
+            }
+            
+            // If no sections found, return empty array to fall back to character-based chunking
+            return sections.length > 1 ? sections : [];
         }
         
         function findBestSplitPoint(text, maxLength) {
